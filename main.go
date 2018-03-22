@@ -5,15 +5,24 @@ import (
 	"os"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/kinesis"
 	kcl "github.com/sul-dlss-labs/go-kcl"
+	"github.com/sul-dlss-labs/refritos/aws_session"
+	"github.com/sul-dlss-labs/refritos/streaming"
 )
 
+var depositStream streaming.KinesisStream
+var updateStream streaming.KinesisStream
+
 func main() {
-	sess, err := session.NewSession()
-	if err != nil {
-		panic(err)
+	sess := aws_session.Connect(true)
+	depositStream = streaming.KinesisStream{
+		Connection: streaming.Connect(sess, os.Getenv("AWS_KINESIS_ENDPOINT")),
+		StreamName: "deposit",
+	}
+	updateStream = streaming.KinesisStream{
+		Connection: streaming.Connect(sess, os.Getenv("AWS_KINESIS_ENDPOINT")),
+		StreamName: "update",
 	}
 
 	s := kcl.NewLocalStore()
@@ -22,7 +31,7 @@ func main() {
 		Interval:     time.Millisecond * 1000,
 		IteratorType: kcl.IteratorTypeLatest,
 	}
-	k, err := kcl.NewStream(sess, os.Getenv("AWS_KINESIS_ENDPOINT"), os.Getenv("AWS_KINESIS_STREAM"), s, config)
+	k, err := kcl.NewStream(sess, os.Getenv("AWS_KINESIS_ENDPOINT"), "taco", s, config)
 	if err != nil {
 		panic(err)
 	}
@@ -35,6 +44,9 @@ func main() {
 
 func handler(records []*kinesis.Record) {
 	for _, r := range records {
-		fmt.Printf("%s", fmt.Sprintf("%s", r.Data[:]))
+		dataString := fmt.Sprintf("%s", r.Data[:])
+		fmt.Printf("%s", dataString)
+		depositStream.SendMessage(dataString)
+		updateStream.SendMessage(dataString)
 	}
 }
